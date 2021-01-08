@@ -13,8 +13,7 @@ from datetime import datetime
 HEADERS = ({'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.61 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.5'})
 
-def login():
-    load_dotenv()
+def login() -> requests.Session:
 
     loginSite = 'https://www.amazon.ca/gp/sign-in.html'
 
@@ -45,11 +44,9 @@ def login():
 
     return session
 
-session = login()
+load_dotenv()
 
-# import CSV file
-tracker = pd.read_csv('products.csv')
-trackerURLs = tracker.url
+session = login()
 
 page = session.get(os.getenv('WISHLIST_URL'), headers=HEADERS)
 soup = BeautifulSoup(page.content, 'lxml')
