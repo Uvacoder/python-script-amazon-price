@@ -39,7 +39,7 @@ def login(session: requests.Session) -> None:
     post_soup = BeautifulSoup(post_resp.content , 'lxml')
  
     if post_soup.find_all('title')[0].text == 'Your Account':
-        print('Login Successfull')
+        print('Login Successful')
     else:
         print('Login Failed')
         exit()
