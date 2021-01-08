@@ -3,7 +3,6 @@
 import requests
 import os
 import pandas as pd
-import math
 
 from bs4 import BeautifulSoup
 from csv import writer
@@ -89,8 +88,8 @@ def getPrice(soup):
             try:
                 price = soup.find(id='priceblock_dealprice').get_text().strip()
             except:
-                price = ''
-    return price
+                return ''
+    return price[5::]
 
 
 def getItemsInfo(session: requests.Session, tracker: pd.DataFrame) -> None:
@@ -106,9 +105,11 @@ def getItemsInfo(session: requests.Session, tracker: pd.DataFrame) -> None:
         
         for x, Id in enumerate(list(tracker.id)):
             if Id == id:
-                buy_below = list(tracker.buybelow)[x]
+                buy_below = str(list(tracker.buybelow)[x])
+                if buy_below == 'nan':
+                    buy_below = ''
 
-        log = pd.DataFrame({
+        df = pd.DataFrame({
             'date': datetime.now().strftime('%d/%m/%y %H:%M'),
             'id': id,
             'url': url,
@@ -117,13 +118,21 @@ def getItemsInfo(session: requests.Session, tracker: pd.DataFrame) -> None:
             'price': price
         }, index=[x])
 
-    filename = 'history/checked_' + datetime.now().strftime('%d-%m-%y_%H-%M') + '.xlsx'
-    log.to_excel(filename)
+        print('price: ' + price)
+        print('below: ' + buy_below)
 
+        if buy_below and price:
+            if float(price) <= float(buy_below):
+                print('PRICE ALERT')
+
+    # filename = 'history/checked_' + datetime.now().strftime('%d-%m-%y_%H-%M') + '.xlsx'
+    # df.to_excel(filename)
 
 
 def main(): 
+    
     load_dotenv()
+
     session = requests.Session()
     session.headers = HEADERS
     
