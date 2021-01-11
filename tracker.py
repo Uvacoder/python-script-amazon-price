@@ -2,81 +2,116 @@
 
 import requests
 import os
+import smtplib
+
 import pandas as pd
 
-from bs4 import BeautifulSoup
 from csv import writer
-from glob import glob
+from bs4 import BeautifulSoup
 from time import sleep
 from dotenv import load_dotenv
 from datetime import datetime
+from playsound import playsound
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-HEADERS = ({'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.61 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.5'
-})
 DOMAIN = 'https://www.amazon.ca'
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'}
 
+class Item():
 
-def login(session: requests.Session) -> None:
+    def __init__(self, name, price, id):
+        self.name = name
+        self.price = price
+        self.id = id
 
-    loginSite = 'https://www.amazon.ca/gp/sign-in.html'
+def login(session):
 
-    soup = BeautifulSoup(session.get(loginSite).content, 'lxml')
+    print('Logging in...')
 
-    data = {}
+    login_site = 'https://www.amazon.ca/gp/sign-in.html'
+
+    response = session.get(login_site)
+    soup = BeautifulSoup(response.content, 'lxml')
+
+    # get all inputs required for login
+
+    signin_data = {}
     form = soup.find('form', {'name': 'signIn'})
     for field in form.find_all('input'):
         try:
-            data[field['name']] = field['value']
+            signin_data[field['name']] = field['value']
         except:
             pass
     
-    data[u'email'] = os.getenv('EMAIL')
-    data[u'password'] = os.getenv('PASSWORD')
+    signin_data[u'email'] = os.getenv('EMAIL')
+    signin_data[u'password'] = os.getenv('PASSWORD')
+    
+    # submit post request
 
-    post_resp = session.post('https://www.amazon.ca/ap/signin', data=data)
-    post_soup = BeautifulSoup(post_resp.content , 'lxml')
- 
+    post_response = session.post('https://www.amazon.ca/ap/signin', data=signin_data)
+    
+    # test if login was successful
+
+    post_soup = BeautifulSoup(post_response.content , 'lxml')
+
     if post_soup.find_all('title')[0].text == 'Your Account':
         print('Login Successful')
     else:
         print('Login Failed')
         exit()
 
-    return session
+def updateItem(data, tracker):
+    
+    ids = tracker.Id.tolist()
+    index = ids.index(data[0])
+    row = tracker.values[index].tolist()
+    newrow = [row[0], row[1], "{:.2f}".format(row[2])]
+    if newrow[2] == 'nan':
+        newrow[2] = ''
 
+    if newrow != data:
+        with open('products.csv', 'r') as readfile:
+            lines = readfile.readlines()
+            for x, line in enumerate(lines):
+                with open('temp.csv', 'a', newline='', encoding="utf-8") as writefile:
+                    if x-1 == index:
+                        writer(writefile).writerow(data)
+                    else:
+                        writefile.write(line.strip())
+                        writefile.write('\n')
+    
+        if os.path.exists('products.csv'):
+            os.remove('products.csv')
+            os.rename('temp.csv', 'products.csv')
+        else:
+            print('error deleting file')
 
 def addNewItems(session: requests.Session, tracker: pd.DataFrame) -> None:
 
-    # check for new items in the wishlist
-
     page = session.get(os.getenv('WISHLIST_URL'), headers=HEADERS)
     soup = BeautifulSoup(page.content, 'lxml')
-
-    title = soup.find(id='profile-list-name').get_text().strip()
-    print(title)
 
     item_list = soup.find(id='wl-item-view')
     items = item_list.find_all('li')
 
     for item in items:
 
-        # Check to see if the item is already in the csv file
-
         id = item['data-itemid']
-        if id in list(tracker.id):
-            continue
-
-        name = item.find('h3', class_='a-size-base').find('a')['title'] 
-        url = DOMAIN + item.find('h3', class_='a-size-base').find('a')['href']
+        name = item.find('h3', class_='a-size-base').find('a')['title']
+        try:
+            buy_below = str(item.find(id='itemCommentRow_'+id).text.strip())
+        except:
+            buy_below = ''
         
-        buy_below = item.find(id='itemCommentRow_'+id).text.strip()
-
-        # Add Item
+        # Check to see if the item is already in the csv file
+        data = [id, name, str(buy_below)]
+        if id in list(tracker.Id):
+            updateItem(data, tracker)
+            continue      
 
         with open('products.csv', 'a', newline='', encoding="utf-8") as file:
-            writer(file).writerow([id, name, url, buy_below])
-
+            writer(file).writerow(data)
 
 def getPrice(soup):
     try:
@@ -91,44 +126,60 @@ def getPrice(soup):
                 return ''
     return price[5::]
 
+def send_email(item: Item) -> None:
 
-def getItemsInfo(session: requests.Session, tracker: pd.DataFrame) -> None:
-    trackerURLs = tracker.url
+    receiver_email = 'ngeldvis@gmail.com'
+    sender_email = os.getenv('DEV_EMAIL')
+    sender_password = os.getenv('DEV_PASSWORD')
 
-    for x, url in enumerate(list(trackerURLs)):
-        page = session.get(url, headers=HEADERS)
-        soup = BeautifulSoup(page.content, 'lxml')
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = 'Price Alert'
 
-        id = soup.find(id='sourceCustomerOrgListItemID')['value']
-        price = getPrice(soup)
-        title = soup.find(id='productTitle').get_text().strip()
+    message = f'An item on your wishlist dropped below asking price!\n{item.name} is now ${item.price}!'
+    text = MIMEText(message, 'plain', 'utf-8')
+    msg.attach(text)
+
+    with smtplib.SMTP_SSL('64.233.184.108') as server:
+        try:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, receiver_email, msg.as_string().encode('ascii'))
+            print('Email sent.')
+        except Exception as e:
+            print('Email failed to send.')
+            print(e)
+
+def getPrices(session, tracker) -> None:
+    
+    page = session.get(os.getenv('WISHLIST_URL'), headers=HEADERS)
+    soup = BeautifulSoup(page.content, 'lxml')
+
+    item_list = soup.find(id='wl-item-view')
+    items = item_list.find_all('li')
+
+    for item in items:
+
+        id = item['data-itemid']
+
+        rownum = tracker['Id'].tolist().index(id)
+        buy_below = str(tracker['Buy Below'].tolist()[rownum])
+
+        try:
+            priceTXT = item.find('span', class_='a-price-whole').text + item.find('span', class_='a-price-fraction').text
+        except:
+            continue
+
+        if buy_below != 'nan':
+            if float(priceTXT) <= float(buy_below):
+                print('Price Alert!')
+                playsound('rsc/notify.mp3')
+
+                # try:
+                name = item.find('h3', class_='a-size-base').find('a')['title']
+                newItem = Item(name, float(priceTXT), id)
+                send_email(newItem)
+                # except:
+                #     pass
         
-        for x, Id in enumerate(list(tracker.id)):
-            if Id == id:
-                buy_below = str(list(tracker.buybelow)[x])
-                if buy_below == 'nan':
-                    buy_below = ''
-
-        df = pd.DataFrame({
-            'date': datetime.now().strftime('%d/%m/%y %H:%M'),
-            'id': id,
-            'url': url,
-            'title': title,
-            'buy_below': buy_below,
-            'price': price
-        }, index=[x])
-
-        print('price: ' + price)
-        print('below: ' + buy_below)
-
-        if buy_below and price:
-            if float(price) <= float(buy_below):
-                print('PRICE ALERT')
-
-    # filename = 'history/checked_' + datetime.now().strftime('%d-%m-%y_%H-%M') + '.xlsx'
-    # df.to_excel(filename)
-
-
 def main(): 
     
     load_dotenv()
@@ -136,12 +187,26 @@ def main():
     session = requests.Session()
     session.headers = HEADERS
     
-    login(session)
+    # login(session)
+    # ^------------^ 
+    # unable to use if wishlist is private since too many login requests 
+    # were sent and the sign-in process requires re-captcha challenges
 
-    tracker = pd.read_csv('products.csv')
+    intervals = 1
+    interval_length = 60 # seconds
 
-    addNewItems(session, tracker)
-    getItemsInfo(session, tracker)
+    interval = 0
+    while interval < intervals:
 
+        # check to see if any new items have been added
+        tracker = pd.read_csv('products.csv')
+        addNewItems(session, tracker)
+
+        # check the prices and if any have dropped below buy_below
+        tracker = pd.read_csv('products.csv')
+        getPrices(session, tracker)
+
+        # sleep(interval_length)
+        interval += 1 # update interval
 
 main()
