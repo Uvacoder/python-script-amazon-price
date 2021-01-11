@@ -173,12 +173,12 @@ def getPrices(session, tracker) -> None:
                 print('Price Alert!')
                 playsound('rsc/notify.mp3')
 
-                # try:
-                name = item.find('h3', class_='a-size-base').find('a')['title']
-                newItem = Item(name, float(priceTXT), id)
-                send_email(newItem)
-                # except:
-                #     pass
+                try:
+                    name = item.find('h3', class_='a-size-base').find('a')['title']
+                    newItem = Item(name, float(priceTXT), id)
+                    send_email(newItem)
+                except:
+                    pass
         
 def main(): 
     
