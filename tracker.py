@@ -1,4 +1,4 @@
-# Will be tracking the price of amazon product(s)
+# Tracks the prices of items in an Amazon Wishlist
 
 import requests
 import os
@@ -25,7 +25,7 @@ class Item():
         self.price = price
         self.id = id
 
-def login(session):
+def login(session): # Unused in current version
 
     print('Logging in...')
 
@@ -128,7 +128,7 @@ def getPrice(soup):
 
 def send_email(item: Item) -> None:
 
-    receiver_email = 'ngeldvis@gmail.com'
+    receiver_email = os.getenv('EMAIL')
     sender_email = os.getenv('DEV_EMAIL')
     sender_password = os.getenv('DEV_PASSWORD')
 
