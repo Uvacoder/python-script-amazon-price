@@ -20,9 +20,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 
 
 load_dotenv()
-
 FILENAME = os.getenv('FILENAME')
-
 
 
 class Item():
@@ -33,8 +31,32 @@ class Item():
         self.id = id
         self.want = want
 
+    def __repr__(self) -> str:
+        txt = f'name: {self.name}, id: {self.id}, price: ${self.price:.2f}, asking price: ${self.want:.2f}'
+        return txt
 
-def updateItem(data, df):
+
+def load_site(url) -> WebDriver:
+
+
+    opts = webdriver.ChromeOptions()
+    opts.headless = True
+    driver = webdriver.Chrome(options=opts)
+    driver.get(url)
+    sleep(1)
+
+    elem = driver.find_element_by_tag_name('body')
+
+    pagedowns = 10
+    while pagedowns:
+        elem.send_keys(Keys.END)
+        time.sleep(0.2)
+        pagedowns -= 1
+
+    return driver
+
+
+def update_item(data: pd.DataFrame, df: pd.DataFrame) -> None:
     
     ids = df.Id.tolist()
     index = ids.index(data[0])
@@ -49,7 +71,7 @@ def updateItem(data, df):
             print(e)
 
 
-def addNewItems(driver: WebDriver, df: pd.DataFrame) -> None:
+def search_items(driver: WebDriver, df: pd.DataFrame) -> None:
 
     items = driver.find_elements_by_css_selector('#wl-item-view li')
     
@@ -67,7 +89,7 @@ def addNewItems(driver: WebDriver, df: pd.DataFrame) -> None:
         new_item = [item_id, item_name, item_want]
        
         if item_id in list(df.Id):
-            updateItem(new_item, df)
+            update_item(new_item, df)
             continue      
 
         data = pd.DataFrame([new_item], columns=['Id', 'Name', 'Want'])
@@ -77,6 +99,85 @@ def addNewItems(driver: WebDriver, df: pd.DataFrame) -> None:
         except Exception as e:
             print('Error: failed to update file')
             print(e)
+
+
+def create_email_body(items: list) -> str:
+    html = '''
+        <p style="
+            text-align: center; 
+            color: #000000;
+        ">Some items on your wishlist are under your asking price!</p>
+        <table style="
+            width: 50%;
+            margin: 25px 0;
+            border-collapse: collapse;
+            border-radius: 5px 5px 0 0;
+            overflow: hidden;
+            margin: auto;
+        ">
+        <thead>
+        <tr style="
+            background-color: #fd983a;
+            color: #ffffff;
+            text-align: left;
+        ">
+        <th style="padding: 12px 15px; text-align: left;">Item</th>
+        <th style="padding: 12px 15px; text-align: left;">Price</th>
+        <th style="padding: 12px 15px; text-align: left;">Wanted Price</th>
+        </tr>
+        </thead>
+        <tbody>'''
+    for x, item in enumerate(items):
+        if x == len(items) - 1: # last item in the list
+            if x % 2 == 0: # even 
+                html += f'''
+                <tr style="
+                    border-bottom: 1px solid #dddddd;
+                    border-bottom: 2px solid #fd983a;
+                    color: #000000;
+                ">
+                <td style="padding: 12px 15px; text-align: left;">{item.name}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.price:.2f}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.want:.2f}</td>
+                </tr>'''
+            else: # odd
+                html += f'''
+                <tr style="
+                    border-bottom: 1px solid #dddddd; 
+                    background-color: #f3f3f3;
+                    border-bottom: 2px solid #fd983a;
+                    color: #000000;
+                ">
+                <td style="padding: 12px 15px; text-align: left;">{item.name}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.price:.2f}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.want:.2f}</td>
+                </tr>'''
+        else:
+            if x % 2 == 0: # even
+                html += f'''
+                <tr style="
+                    border-bottom: 1px solid #dddddd;
+                    color: #000000;
+                ">
+                <td style="padding: 12px 15px; text-align: left;">{item.name}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.price:.2f}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.want:.2f}</td>
+                </tr>'''
+            else: # odd
+                html += f'''
+                <tr style="
+                    border-bottom: 1px solid #dddddd; 
+                    background-color: #f3f3f3;
+                    color: #000000;
+                ">
+                <td style="padding: 12px 15px; text-align: left;">{item.name}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.price:.2f}</td>
+                <td style="padding: 12px 15px; text-align: left;">${item.want:.2f}</td>
+                </tr>'''
+
+    html += '''</tbody></table>'''
+
+    return html
 
 
 def send_email(items: list) -> None:
@@ -98,94 +199,9 @@ def send_email(items: list) -> None:
     msg['To'] = receiver_email
 
     if len(items) > 0:
-
-        html = '''
-            <p style="text-align: center;
-                color: #000000;">Some items on your wishlist are under your asking price!</p>
-            <table style="width: 50%;
-                    margin: 25px 0;
-                    border-collapse: collapse;
-                    border-radius: 5px 5px 0 0;
-                    overflow: hidden;
-                    margin: auto;">
-                <thead>
-                    <tr style="background-color: #fd983a;
-                            color: #ffffff;
-                            text-align: left;">
-                        <th style="padding: 12px 15px;
-                            text-align: left;">Item</th>
-                        <th style="padding: 12px 15px;
-                            text-align: left;">Price</th>
-                        <th style="padding: 12px 15px;
-                            text-align: left;">Wanted Price</th>
-                    </tr>
-                </thead>
-                <tbody>
-            '''
-        for x, item in enumerate(items):
-            if x == len(items) - 1:
-                if x % 2 == 0:
-                    html += f'''
-                    <tr style="border-bottom: 1px solid #dddddd;
-                            border-bottom: 2px solid #fd983a;
-                            color: #000000;">
-                        <td style="padding: 12px 15px;
-                            text-align: left;">{item.name}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.price:.2f}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.want:.2f}</td>
-                    </tr>
-                    '''
-                else:
-                    html += f'''
-                    <tr style="border-bottom: 1px solid #dddddd; 
-                            background-color: #f3f3f3;
-                            border-bottom: 2px solid #fd983a;
-                            color: #000000;">
-                        <td style="padding: 12px 15px;
-                            text-align: left;">{item.name}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.price:.2f}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.want:.2f}</td>
-                    </tr>
-                    '''
-            else:
-                if x % 2 == 0:
-                    html += f'''
-                    <tr style="border-bottom: 1px solid #dddddd;
-                            color: #000000;">
-                        <td style="padding: 12px 15px;
-                            text-align: left;">{item.name}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.price:.2f}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.want:.2f}</td>
-                    </tr>
-                    '''
-                else:
-                    html += f'''
-                    <tr style="border-bottom: 1px solid #dddddd; 
-                            background-color: #f3f3f3;
-                            color: #000000;">
-                        <td style="padding: 12px 15px;
-                            text-align: left;">{item.name}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.price:.2f}</td>
-                        <td style="padding: 12px 15px;
-                            text-align: left;">${item.want:.2f}</td>
-                    </tr>
-                    '''
-
-        html += '''
-                </tbody>
-            </table>
-            '''
-
-        part1 = MIMEText(html, 'html')
-        msg.attach(part1)
-
+        html = create_email_body(items)
+        body = MIMEText(html, 'html')
+        msg.attach(body)
     else:
         text = 'None of the items on your wishlist are under your asking price.'
         msg.attach(MIMEText(text, 'plain'))
@@ -204,7 +220,7 @@ def send_email(items: list) -> None:
             print(e)
 
 
-def getPrices(driver, df) -> None:
+def get_sale_items(driver: WebDriver, df: pd.DataFrame) -> list:
 
     items = driver.find_elements_by_css_selector('#wl-item-view li')
 
@@ -231,37 +247,17 @@ def getPrices(driver, df) -> None:
             new_item = Item(item_name, float(priceTXT), item_id, want)
             found_items.append(new_item)
     
-    send_email(found_items)
+    return found_items
 
 
-def load_site(url) -> WebDriver:
-
-    opts = webdriver.ChromeOptions()
-    opts.headless = True
-    driver = webdriver.Chrome(options=opts)
-    driver.get(url)
-    sleep(1)
-
-    elem = driver.find_element_by_tag_name('body')
-
-    pagedowns = 10
-    while pagedowns:
-        elem.send_keys(Keys.END)
-        time.sleep(0.2)
-        pagedowns -= 1
-
-    return driver
-
-
-def main(): 
+def main() -> None: 
 
     # check to see if any new items have been added
     df = pd.read_csv(FILENAME)
     driver = load_site(os.getenv('WISHLIST_URL'))
-    addNewItems(driver, df)
-
-    # check the prices and if any have dropped below buy_below
-    getPrices(driver, df) 
+    search_items(driver, df)
+    items = get_sale_items(driver, df) 
+    send_email(items)
 
 
 main()
