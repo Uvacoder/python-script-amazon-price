@@ -2,6 +2,9 @@
 
 A python web scraper that reads information from an Amazon wishlist and sends an email if any items drops below a specific price specified under the items comments
 
+*Example Email:*
+![Example Email](rsc/example_email.png) 
+
 # Requirements
 
 - Python 3
