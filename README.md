@@ -5,12 +5,12 @@ A python web scraper that reads information from an Amazon wishlist and sends an
 *Example Email:*
 ![Example Email](rsc/example_email.png) 
 
-# Requirements
+### Requirements
 
 - Python 3
 - modules: dotenv, pandas, selenium, ssl, smtplib, and more (view source file)
 
-# .env File Format
+### .env File Format
 
 ```
 FILENAME='<filename>.csv'
